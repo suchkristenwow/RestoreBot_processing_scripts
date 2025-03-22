@@ -28,6 +28,7 @@ class ImuTransformer:
         self.sync.registerCallback(self.imu_callback)
 
     def imu_callback(self, imu_msg):
+        print("received imu message!")
         try:
             # Lookup the latest transform
             (trans, rot) = self.tf_listener.lookupTransform(self.base_frame, self.imu_frame, imu_msg.header.stamp)
@@ -48,7 +49,8 @@ class ImuTransformer:
             # Copy over the linear acceleration and angular velocity without transformation
             transformed_imu.linear_acceleration = imu_msg.linear_acceleration
             transformed_imu.angular_velocity = imu_msg.angular_velocity
-
+            
+            print("publishing transformed imu ...")
             # Publish the transformed IMU message
             self.imu_pub.publish(transformed_imu)
 

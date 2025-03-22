@@ -12,7 +12,7 @@ CURRENT_TIMESTAMP = None
 trail_duration = 1.0  # Duration of the trail in seconds
 fade_duration = 15.0  # Duration for fading points
 
-frame_dir = "/media/kristen/easystore2/front_imgs"  # Directory containing frame images
+frame_dir = "/media/kristen/easystore3/front_imgs"  # Directory containing frame images
 current_frame_image = None  # Global variable to hold the current image figure
 image_ax = None  # Global variable for the image axis
 
@@ -20,6 +20,70 @@ image_ax = None  # Global variable for the image axis
 is_paused = True 
 preserved_xlim = None  # To store x-axis limits
 preserved_ylim = None  # To store y-axis limits
+
+import pandas as pd
+
+# Directory containing covariance matrices
+covariance_dir = "May_results/covariance_matrices"
+
+# Precompute all available covariance matrix timestamps
+import glob
+
+def precompute_timestamps():
+    """Precompute all available timestamps from the covariance matrix files."""
+    print("precomputing timestamps ...")
+    filenames = glob.glob(os.path.join(covariance_dir, "*.csv"))
+    timestamps = [int(os.path.basename(f).split(".")[0]) for f in filenames]  # Convert nanoseconds to seconds
+    return sorted(timestamps)
+
+available_timestamps = precompute_timestamps()  # Precompute once at the start
+print("available timestamps: ",available_timestamps)
+print("Done!")
+
+def load_covariance_matrix(timestamp):
+    """Load the covariance matrix for the given timestamp."""
+    # Find the closest available timestamp
+    closest_timestamp = min(available_timestamps, key=lambda t: abs(t*10**(-9) - timestamp)) 
+    tmp = closest_timestamp*10**(-9)
+    filename = os.path.join(covariance_dir, f"{closest_timestamp}.csv") 
+    #print("filename: ",filename)
+    if not os.path.exists(filename):
+        raise OSError 
+    #print("delta_t: ",abs(timestamp - tmp) )
+    # Check if the closest timestamp is within 0.1 seconds
+    if abs(timestamp - tmp) <= 0.1:
+        #return pd.read_csv(filename, header=None).values
+        #print(np.genfromtxt(filename))
+        return np.genfromtxt(filename)
+    else:
+        # If no timestamp is close enough, return None
+        return None
+
+from matplotlib.patches import Ellipse
+
+def create_uncertainty_ellipse(cov_matrix, center, ax, **kwargs):
+    """Create an uncertainty ellipse scaled for lat/lon plotting."""
+    if cov_matrix is None:
+        return None
+
+    # Convert covariance matrix from meters² to degrees²
+    lat_scale = 1 / LAT_METERS_PER_DEGREE
+    lon_scale = 1 / LON_METERS_PER_DEGREE
+    scale_matrix = np.diag([lat_scale, lon_scale])  # Scale factors for lat/lon
+    scaled_cov_matrix = scale_matrix @ cov_matrix @ scale_matrix.T
+
+    # Eigenvalues and eigenvectors for ellipse orientation and scaling
+    eigenvalues, eigenvectors = np.linalg.eig(scaled_cov_matrix)
+    major_axis = 2 * np.sqrt(eigenvalues[0])  # 2-sigma width
+    minor_axis = 2 * np.sqrt(eigenvalues[1])  # 2-sigma height
+    angle = np.degrees(np.arctan2(eigenvectors[0, 1], eigenvectors[0, 0]))  # Orientation
+
+    # Create and return the ellipse
+    ellipse = Ellipse(
+        xy=center, width=major_axis, height=minor_axis, angle=angle, **kwargs
+    )
+    #ax.add_patch(ellipse)
+    return ellipse
 
 def update_closest_frame(timestamp):
     """Update the displayed image to match the closest frame for the current timestamp."""
@@ -66,11 +130,11 @@ def find_closest_frame(timestamp):
         return matching_files[0] 
 
 # Annotated compass data
-automated_annotations = np.genfromtxt("int_results/data.csv", delimiter=",")  # [row_tstep, true_course, measured_yaw, angular_vel]
+automated_annotations = np.genfromtxt("May_results/data.csv", delimiter=",")  # [row_tstep, true_course, measured_yaw, angular_vel]
 annotated_tsteps = automated_annotations[:, 0]
 
 # Read the GPS data
-gps_results = np.genfromtxt("int_results/results.csv", delimiter=",", skip_header=1)
+gps_results = np.genfromtxt("May_results/results.csv", delimiter=",", skip_header=1)
 
 # Extract timestamps, latitudes, and longitudes
 timestamps = gps_results[:, 0]
@@ -122,7 +186,8 @@ ax.set_ylabel("Latitude")
 ax.set_xlim([initial_lon_min, initial_lon_max])
 ax.set_ylim([initial_lat_min, initial_lat_max])
 plt.grid(True)
-
+ax.set_aspect(LAT_METERS_PER_DEGREE / LON_METERS_PER_DEGREE)
+ 
 # Pause flag: Start paused
 is_paused = True
 paused_frame = 0  # Frame to start from when resuming
@@ -205,11 +270,31 @@ def update(frame):
         lon_min, lon_max = np.min(filtered_longitudes) - 0.0001, np.max(filtered_longitudes) + 0.0001
         ax.set_xlim([lon_min, lon_max])
         ax.set_ylim([lat_min, lat_max])
+    
+    # Add to the top of your update function
+    ellipse = None  # Initialize a variable to hold the uncertainty ellipse
+
+    # Inside the update function, before returning plots
+    cov_matrix = load_covariance_matrix(current_time)
+    print("cov_matrix: ",cov_matrix) 
+
+    if ellipse:
+        ellipse.remove()  # Remove the previous ellipse if it exists
+
+    ellipse = create_uncertainty_ellipse(
+        cov_matrix,
+        center=(filtered_longitudes[frame], filtered_latitudes[frame]),
+        ax=ax,
+        edgecolor=None,
+        facecolor='red',
+        linewidth=1.5,
+        alpha=0.1
+    )
 
     fig.canvas.draw_idle()
     return (recent_plot, older_plot, very_old_plot,
             robot_rectangle, camera_rectangle,
-            ouster_plot)
+            ouster_plot,ellipse)
 
 def frame_generator():
     """Generator function to yield frames only when not paused."""

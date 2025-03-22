@@ -39,12 +39,13 @@ def calculate_new_gps(lat, lon, range_m, bearing_deg):
 
 
 # Load measurements and compass data
-measurements = np.genfromtxt("yawHeading_data.csv", delimiter=",", skip_header=1)
-compass_data = np.genfromtxt("processed_compass_heading.csv", delimiter=",", skip_header=1)  # t, compassHeading
+measurements = np.genfromtxt("May_results/2drill/yawHeading_data.csv", delimiter=",", skip_header=1)
+compass_data = np.genfromtxt("May_results/2drill/processed_compass_heading.csv", delimiter=",", skip_header=1)  # t, compassHeading
+
 
 # Initialize results file if it doesn't exist
-if not os.path.exists("results.csv"):
-    with open("results.csv", mode='w', newline='') as file:
+if not os.path.exists("May_results/2drill/results.csv"):
+    with open("May_results/2drill/results.csv", mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['timestamp', 'lat', 'lon', 'pointer_lat', 'pointer_lon',
                          'ouster_lat', 'ouster_lon', 'frontLeftWheel_lat', 'frontLeftWheel_lon',
@@ -63,7 +64,9 @@ self.position_covar[6], self.position_covar[7], self.position_covar[8]]
 '''
 for measurement in measurements:
     t = measurement[0]
+    print("t:",t)
     lat, lon = measurement[4], measurement[5]
+    print("lat: {}, lon: {}".format(lat,lon)) 
 
     # Validate GPS coordinates
     if not isinstance(lat, float) or not isinstance(lon, float):
@@ -83,9 +86,11 @@ for measurement in measurements:
     else:
         compass_heading_t = compass_data[idx, 1]
 
-    if 1650825767 <= t <= 1650825780:
-        print("compass_heading_t:",compass_heading_t)
-        input("Press Enter to Continue") 
+    if np.isnan(compass_heading_t): 
+        print("WARNING: compass heading is nan ...")
+        continue 
+
+    print("compass_heading_t: ",compass_heading_t) 
 
     compass_heading_rad = np.deg2rad(compass_heading_t)
 
@@ -94,6 +99,7 @@ for measurement in measurements:
 
     ouster_range = np.linalg.norm([0.664, 0.192])
     ouster_bearing_rad = compass_heading_rad + (np.pi / 2 - np.arctan2(0.664, 0.192))
+
     ouster_lat, ouster_lon = calculate_new_gps(lat, lon, ouster_range, np.rad2deg(ouster_bearing_rad % (2 * np.pi)))
 
     wheels = {
@@ -125,10 +131,23 @@ for measurement in measurements:
     for corner, (range_m, bearing_rad) in frame_corners.items():
         corner_bearing_rad = compass_heading_rad + bearing_rad
         frame_coords[corner] = calculate_new_gps(cam_lat, cam_lon, range_m, np.rad2deg(corner_bearing_rad % (2 * np.pi)))
+        print("frame_coords[corner]: ",frame_coords[corner]) 
 
     # Write results
-    with open("results.csv", mode='a', newline='') as file:
+    with open("May_results/2drill/results.csv", mode='a', newline='') as file:
         writer = csv.writer(file)
+        print("writing row: ",[t, lat, lon, pointer_lat, pointer_lon,
+                         ouster_lat, ouster_lon,
+                         wheel_coords['frontLeft'][0], wheel_coords['frontLeft'][1],
+                         wheel_coords['frontRight'][0], wheel_coords['frontRight'][1],
+                         wheel_coords['rearLeft'][0], wheel_coords['rearLeft'][1],
+                         wheel_coords['rearRight'][0], wheel_coords['rearRight'][1],
+                         cam_lat, cam_lon,
+                         frame_coords['topRight'][0], frame_coords['topRight'][1],
+                         frame_coords['topLeft'][0], frame_coords['topLeft'][1],
+                         frame_coords['bottomRight'][0], frame_coords['bottomRight'][1],
+                         frame_coords['bottomLeft'][0], frame_coords['bottomLeft'][1]]) 
+        print()
         writer.writerow([t, lat, lon, pointer_lat, pointer_lon,
                          ouster_lat, ouster_lon,
                          wheel_coords['frontLeft'][0], wheel_coords['frontLeft'][1],

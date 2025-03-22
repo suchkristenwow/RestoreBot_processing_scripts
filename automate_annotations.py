@@ -7,14 +7,16 @@ def get_range_index(ranges, value):
     return None
 
 
-hand_annotations = np.genfromtxt("/home/kristen/Documents/compass_annotations.csv") 
+
+hand_annotations = np.genfromtxt("/home/kristen/Documents/2drill_compass_annotations.csv",delimiter=",") 
+print("hand_annotations:",hand_annotations)
 hand_annotations = hand_annotations[1:,:]
 
 init_tf = hand_annotations[0,1] 
 
 annotated_time_ranges = [(row[0],row[1]) for row in hand_annotations]
 
-raw_data = np.genfromtxt("yawHeading_data.csv",delimiter=",",skip_header=1)
+raw_data = np.genfromtxt("May_results/2drill/yawHeading_data.csv",delimiter=",",skip_header=1)
 
 '''
 [msg_tstamp, self.yaw, self.angularVel, heading, 
@@ -28,7 +30,8 @@ raw_data = np.genfromtxt("yawHeading_data.csv",delimiter=",",skip_header=1)
 annotations = []
 for row in raw_data:
     valid_measurement = False
-    # [msg_tstamp, self.yaw, self.angularVel , heading] 
+    # [msg_tstamp, self.yaw, self.angularVel , heading]  
+    print("row: ",row) 
     row_tstep = row[0]
     measured_yaw = row[1]
     angular_vel = row[2]
@@ -36,11 +39,12 @@ for row in raw_data:
 
     idx = get_range_index(annotated_time_ranges, row_tstep)
     if idx is None:
-        continue
+        continue 
 
     annotation = hand_annotations[idx, :]
     theta_0 = annotation[2]
     theta_1 = annotation[3]
+    print("annotation: ",annotation) 
 
     # Check if true_course is within the range [theta_0, theta_1], considering wrap-around
     if theta_0 <= theta_1:
@@ -55,6 +59,9 @@ for row in raw_data:
     if valid_measurement:
         print("Appending measurement:", [row_tstep,true_course, measured_yaw, angular_vel])  
         annotations.append([row_tstep,true_course, measured_yaw, angular_vel])
+    else: 
+        if annotation[0] == 0: 
+            annotations.append([row_tstep,np.mean([theta_0,theta_1]),measured_yaw,angular_vel])
 
 # Save the annotations
-np.savetxt("data.csv", np.array(annotations), delimiter=",")
+np.savetxt("May_results/2drill/data.csv", np.array(annotations), delimiter=",")

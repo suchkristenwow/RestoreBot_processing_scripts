@@ -42,8 +42,10 @@ class GPSProjector:
         # Subscribers
         rospy.Subscriber("/lio_sam/mapping/odometry", Odometry, self.odom_callback)
         rospy.Subscriber("/nmea_sentence", Sentence, self.nmea_callback)
-        rospy.Subscriber("/gps/filtered", NavSatFix, self.gps_callback) 
-        rospy.Subscriber("/camera_fov_polygon",PolygonStamped, self.fov_callback)
+        rospy.Subscriber("/gps/fix", NavSatFix, self.gps_callback) 
+        #rospy.Subscriber("/right_camera_fov_polygon",PolygonStamped, self.right_fov_callback) 
+        #rospy.Subscriber("/left_camera_fov_polygon",PolygonStamped, self.left_fov_callback)
+
         self.yaw = None
         self.angularVel = None
         self.yaw_window = deque()  # Deque to store (timestamp, yaw) pairs
@@ -55,8 +57,8 @@ class GPSProjector:
 
         self.position_covar = []
 
-        if not os.path.exists("yawHeading_data.csv"):
-            with open("yawHeading_data.csv", mode='w', newline='') as file:
+        if not os.path.exists("May_results/2control/yawHeading_data.csv"):
+            with open("May_results/2control/yawHeading_data.csv", mode='w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(["timestamp", "yaw", "angular_vel (yaw)", "true_course", 
                                  "lat","lon", 
@@ -76,13 +78,13 @@ class GPSProjector:
         euler = tf.transformations.euler_from_quaternion(quaternion)
         return euler[2]  # Return yaw angle
 
-    def fov_callback(self,msg): 
+    def left_fov_callback(self,msg): 
         corner_projections = msg.polygon.points #these projections are in the map frame 
         trans, rot = self.tf_listener.lookupTransform("map","H03/horiz_ouster_sensor",rospy.Time(0))
         rotation_matrix= tf.transformations.quaternion_matrix(rot)[:3,:3] 
         translation_vector = np.array(trans) 
 
-        self.cam_fov_yaw_radius = [] 
+        self.left_cam_fov_yaw_radius = [] 
 
         transformed_corners = []
         #apply transform to get camera fov corners relative to the GPS receiver 
@@ -96,7 +98,7 @@ class GPSProjector:
             corner_x = point_navsat_frame[0]; corner_y = point_navsat_frame[1] 
             corner_radius = np.linalg.norm([corner_x,corner_y])
             corner_yaw = np.arctan2(corner_y,corner_x) 
-            self.cam_fov_yaw_radius.append((corner_radius,corner_yaw)) 
+            self.left_cam_fov_yaw_radius.append((corner_radius,corner_yaw)) 
 
             # Store the transformed point
             transformed_corners.append(point_navsat_frame)
@@ -105,11 +107,43 @@ class GPSProjector:
         center_x = np.mean([x[0] for x in transformed_corners]); center_y = np.mean([x[1] for x in transformed_corners] ) 
         center_radius = np.linalg.norm([center_x,center_y]) 
         center_yaw = np.arctan2(center_y,center_x)      
-        self.cam_fov_yaw_radius.append((center_radius,center_yaw))
+        self.left_cam_fov_yaw_radius.append((center_radius,center_yaw))
+
+    def right_fov_callback(self,msg): 
+        corner_projections = msg.polygon.points #these projections are in the map frame 
+        trans, rot = self.tf_listener.lookupTransform("map","H03/horiz_ouster_sensor",rospy.Time(0))
+        rotation_matrix= tf.transformations.quaternion_matrix(rot)[:3,:3] 
+        translation_vector = np.array(trans) 
+
+        self.right_cam_fov_yaw_radius = [] 
+
+        transformed_corners = []
+        #apply transform to get camera fov corners relative to the GPS receiver 
+        for i,corner in enumerate(corner_projections): 
+            # Convert the point to a numpy array
+            point_map_frame = np.array([corner.x, corner.y, corner.z])
+
+            # Apply the rotation and translation
+            point_navsat_frame = np.dot(rotation_matrix, point_map_frame) + translation_vector
+
+            corner_x = point_navsat_frame[0]; corner_y = point_navsat_frame[1] 
+            corner_radius = np.linalg.norm([corner_x,corner_y])
+            corner_yaw = np.arctan2(corner_y,corner_x) 
+            self.right_cam_fov_yaw_radius.append((corner_radius,corner_yaw)) 
+
+            # Store the transformed point
+            transformed_corners.append(point_navsat_frame)
+        #print("transformed_corners: ",transformed_corners) 
+
+        center_x = np.mean([x[0] for x in transformed_corners]); center_y = np.mean([x[1] for x in transformed_corners] ) 
+        center_radius = np.linalg.norm([center_x,center_y]) 
+        center_yaw = np.arctan2(center_y,center_x)      
+        self.right_cam_fov_yaw_radius.append((center_radius,center_yaw))
 
         #print("self.cam_fov_yaw_radius: ",self.cam_fov_yaw_radius)
 
     def gps_callback(self,msg): 
+        #print("entered gps_callback!")
         self.filtered_lat = msg.latitude
         self.filtered_lon = msg.longitude 
         self.position_covar = msg.position_covariance 
@@ -140,7 +174,7 @@ class GPSProjector:
             rearRightWheel_radius = np.linalg.norm(rearRightWheel_trans[:2]) 
             rearRightWheel_yaw = np.arctan2(rearRightWheel_trans[1],rearRightWheel_trans[0]) 
 
-            with open("robotTransforms.csv", mode='a', newline='') as file:
+            with open("May_results/2control/robotTransforms.csv", mode='a', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow([ouster_radius,ouster_yaw,
                                  frontLeftWheel_radius,frontLeftWheel_yaw,
@@ -156,6 +190,7 @@ class GPSProjector:
         
     def odom_callback(self, msg):
         msg_tstamp = msg.header.stamp.to_sec()
+        print("odom callback ... this is timestamp: ",msg_tstamp)
         orientation = msg.pose.pose.orientation
         yaw = self.euler_from_quaternion(orientation)
 
@@ -188,26 +223,30 @@ class GPSProjector:
         Callback function to process NMEA sentence messages and publish compass heading.
         """
         msg_tstamp = msg.header.stamp.to_sec()
+        print("nmea callback ... this is msg_tstamp: ",msg_tstamp)
+
         # Check if the sentence is a GNRMC sentence
         if msg.sentence.startswith("$GNRMC"):
             try:
                 parts = msg.sentence.split(',')
                 heading = float(parts[8]) if parts[8] else None
+                heading += float(parts[10])
                 lat = 10**(-2)*float(parts[3]); lon = -10**(-2)*float(parts[5]) 
                 if heading is not None and heading != 0:
                     cardinal_direction = get_cardinal_direction(heading)
-                    #print(f"measured heading: {heading}, cardinal direction: {cardinal_direction}")
+                    print(f"measured heading: {heading}, cardinal direction: {cardinal_direction}")
                     # Write to CSV
-                    '''
-                    "timestamp", "yaw", "angular_vel (yaw)", "true_course", 
-                                 "lat","lon", 
-                                 "filtered_lat", "filtered_lon", 
-                                 "position_covar0", "position_covar1", "position_covar2", 
-                                 "position_covar3", "position_covar4", "position_covar5",
-                                   "position_covar6", "position_covar7","position_covar8"
-                    ''' 
-                    with open("yawHeading_data.csv", mode='a', newline='') as file:
+                    with open("May_results/2control/yawHeading_data.csv", mode='a', newline='') as file:
                         writer = csv.writer(file)
+                        '''
+                        print("writing row: ")
+                        print([msg_tstamp, self.yaw, self.angularVel, heading, 
+                                         lat, lon, 
+                                         self.filtered_lat, self.filtered_lon, 
+                                         self.position_covar[0], self.position_covar[1], self.position_covar[2],
+                                         self.position_covar[3], self.position_covar[4], self.position_covar[5],
+                                         self.position_covar[6], self.position_covar[7], self.position_covar[8]])
+                        '''
                         writer.writerow([msg_tstamp, self.yaw, self.angularVel, heading, 
                                          lat, lon, 
                                          self.filtered_lat, self.filtered_lon, 

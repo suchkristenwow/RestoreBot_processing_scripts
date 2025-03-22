@@ -1,0 +1,11 @@
+/media/kristen/easystore2/RestorebotData/May2022_final/1conmod/1conmod_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/1control/1control_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/1drill/1drill_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/2conmod/2conmod_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/2control/2control_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/2drill/2drill_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/3conmod/3conmod_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/3control/3control_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/3drill/3drill_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/4conmod/4conmod_May2022.bag 
+/media/kristen/easystore2/RestorebotData/May2022_final/4control/4control_May2022.bag 
